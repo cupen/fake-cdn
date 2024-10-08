@@ -2,8 +2,7 @@
 Fake CDN
 
 # Features
-* Upload files
-* Download files
+* Upload / Download files
 * Serve static site
 
 # Dependencies
