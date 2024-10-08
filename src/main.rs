@@ -1,12 +1,17 @@
 use std::io::Read;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use log::{info, warn, error};
+use colog;
+
 
 mod cli;
 use cli::Command;
 
+mod lib;
+
 // use lazy_static::lazy_static;
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 // use actix_web::http::header::{HeaderMap, HeaderValue};
 use actix_files::Files;
 use tokio::fs;
@@ -46,26 +51,30 @@ async fn upload(args: web::Path<(String,)>,  MultipartForm(mut form): MultipartF
     if fpath.contains("..") {
         return HttpResponse::BadRequest().body("Bad path");
     }
+    log::info!("[upload] {:?}", form);
     let fname = form.file.file_name.unwrap();
-    println!("[upload] path:{} fname:{} size:{}", fpath, fname, form.file.size);
+    info!("[upload] path: {} fname: {} size: {}", fpath, fname, form.file.size);
     let full_path = PathBuf::from(UPLOAD_DIR).join(fpath);
+
+    info!("[upload] \t to: {}", full_path.display());
     let dpath = full_path.parent().unwrap();
     if !dpath.exists() {
         fs::create_dir_all(dpath).await.expect("Unable to create dir");
     }
 
-    if cfg!(windows) {
-        let buf :&mut Vec<u8> = &mut Vec::new();
-        // let data = form.file.file.as_file();
-        let fp = form.file.file.as_file_mut();
-        let a = fp.read_to_end(buf).unwrap();
-        // let a = fp.read_to_end(buf).unwrap();
-        if a == 0 {
+    // if cfg!(windows) {
+    let buf :&mut Vec<u8> = &mut Vec::new();
+    // let data = form.file.file.as_file();
+    let fp = form.file.file.as_file_mut();
+    match fp.read_to_end(buf) {
+        Ok(s) => {
+            info!("[upload] read {} bytes", s);
+            fs::write(full_path, buf).await.expect("Unable to write file");
+        },
+
+        _ => {
             return HttpResponse::BadRequest().body("Bad file");
         }
-        fs::write(full_path, buf).await.expect("Unable to write file");
-    } else if cfg!(unix) {
-        form.file.file.persist(full_path).unwrap();
     }
     return HttpResponse::Ok().body("");
 }
@@ -86,6 +95,8 @@ async fn status() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    colog::init();
+
     let args = cli::parse_args();
     match args.command  {
         Command::Web { listen } => {
