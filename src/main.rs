@@ -1,9 +1,9 @@
+use colog;
+use log::{debug, error, info, warn};
 use std::io::Read;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::path::PathBuf;
-use log::{info, warn, error};
-use colog;
-
 
 mod cli;
 use cli::Command;
@@ -11,7 +11,9 @@ use cli::Command;
 mod lib;
 
 // use lazy_static::lazy_static;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    get, http::header, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
 // use actix_web::http::header::{HeaderMap, HeaderValue};
 use actix_files::Files;
 use tokio::fs;
@@ -31,102 +33,107 @@ struct UploadForm {
     file: TempFile,
 }
 
-// #[post("/")]
-// async fn upload(req: HttpRequest) -> impl Responder {
-//     println!("http upload: {:?}", req);
-//     let path = req.path();
-//     if path.contains("..") {    
-//         return HttpResponse::BadRequest().body("Bad path")
-//     }
-//     let full_path = format!("{}/{}", upload_dir, path);
-//     // File::create(full_path).await.expect("Unable to create file");
-//     fs::write(full_path, req.body()).await.expect("Unable to write file");
-//     return HttpResponse::Ok().body("File created");
-// }
-
-
 #[post("/{path:.*}")]
-async fn upload(args: web::Path<(String,)>,  MultipartForm(mut form): MultipartForm<UploadForm>) -> impl Responder {
+async fn upload(
+    args: web::Path<(String,)>,
+    req: HttpRequest,
+    MultipartForm(mut form): MultipartForm<UploadForm>,
+) -> impl Responder {
     let fpath = args.into_inner().0;
     if fpath.contains("..") {
         return HttpResponse::BadRequest().body("Bad path");
     }
-    log::info!("[upload] {:?}", form);
-    let fname = form.file.file_name.unwrap();
-    info!("[upload] path: {} fname: {} size: {}", fpath, fname, form.file.size);
-    let full_path = PathBuf::from(UPLOAD_DIR).join(fpath);
+    debug!("[upload] {:?}", form);
+    let token = req.headers().get("Authorization");
+    info!("[upload] {} size: {}", fpath, form.file.size);
+    let full_path = PathBuf::from(UPLOAD_DIR).join(fpath.clone());
 
-    info!("[upload] \t to: {}", full_path.display());
     let dpath = full_path.parent().unwrap();
     if !dpath.exists() {
-        fs::create_dir_all(dpath).await.expect("Unable to create dir");
+        fs::create_dir_all(dpath)
+            .await
+            .expect("Unable to create dir");
     }
 
     // if cfg!(windows) {
-    let buf :&mut Vec<u8> = &mut Vec::new();
+    let buf: &mut Vec<u8> = &mut Vec::new();
     // let data = form.file.file.as_file();
     let fp = form.file.file.as_file_mut();
     match fp.read_to_end(buf) {
         Ok(s) => {
-            info!("[upload] read {} bytes", s);
-            fs::write(full_path, buf).await.expect("Unable to write file");
-        },
+            info!("[upload]  => saved: {} {} bytes", full_path.display(), s);
+            fs::write(full_path.clone(), buf)
+                .await
+                .expect("Unable to write file");
+
+
+            let fname = form.file.file_name.unwrap();
+            if fname.contains(".") {
+                fname.split(".").last().unwrap();
+                let mut ext = Path::new(&fname)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap();
+                if fname.ends_with(".tar.gz") || fname.ends_with(".tgz") {
+                    ext = "tar.gz";
+                }
+                match ext {
+                    "tar.gz" => {
+                        info!("[upload] {} is tar.gz",  full_path.display());
+                        let full_dir = full_path.parent().unwrap();
+                        lib::uncompress_tgz(&full_path, full_dir).expect("Unable to uncompress");
+                    }
+                    "zip" => {
+                        info!("[upload] {} is zip", fpath);
+                    }
+                    "html" => {
+                        info!("[upload] {} is html", fpath);
+                    }
+                    _ => {
+                        info!("[upload] {} is {}", fpath, ext);
+                    }
+                }
+            }
+        }
 
         _ => {
+            error!("[upload]  => save failed: {}", full_path.display());
             return HttpResponse::BadRequest().body("Bad file");
         }
     }
     return HttpResponse::Ok().body("");
 }
 
-
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    println!("[echo] {:?}", req_body);
-    HttpResponse::Ok().body(req_body)
-}
-
 #[get("/status")]
 async fn status() -> impl Responder {
-    println!("[status] ok");
+    info!("[status] ok");
     HttpResponse::Ok()
 }
-
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     colog::init();
 
     let args = cli::parse_args();
-    match args.command  {
-        Command::Web { listen } => {
-            let lis = listen.parse::<SocketAddr>().expect("Invalid listen address");
+    match args.command {
+        Command::Web { listen, dir, token } => {
+            let lis = listen
+                .parse::<SocketAddr>()
+                .expect("Invalid listen address");
             println!("Listening on: {}", lis);
             HttpServer::new(|| {
-                App::new()
-                    .service(echo)
-                    .service(status)
-                    .service(upload)
-                    .service(
-                        Files::new("/" , UPLOAD_DIR)
+                App::new().service(status).service(upload).service(
+                    Files::new("/", UPLOAD_DIR)
                         .prefer_utf8(true)
-                        .show_files_listing())
+                        .show_files_listing(),
+                )
             })
             .bind(lis)?
             .run()
             .await
-        },
+        }
         _ => {
             panic!("Invalid command");
-            // HttpServer::new(|| {
-            //     App::new()
-            //         .service(echo)
-            //         .service(status)
-            //         .service(upload)
-            //         .service(Files::new("/" , UPLOAD_DIR).prefer_utf8(true))
-            // })
-            // .run()
-            // .await
         }
     }
 }

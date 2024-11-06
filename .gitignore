@@ -6,6 +6,9 @@ target/
 .venv/
 __pycache__/
 *.html
+*.css
+*.js
+*.tar.gz
 
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
