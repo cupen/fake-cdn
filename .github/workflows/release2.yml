@@ -1,0 +1,24 @@
+name: test rust release action
+on:
+  push:
+    tags:
+      - "v*"
+jobs:
+  basic_test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: test build rust project
+        uses: lxl66566/rust-simple-release@v0.2.2
+        with:
+          targets: x86_64-pc-windows-msvc, x86_64-unknown-linux-gnu
+          bins: fake-cdn
+          files_to_pack: README.md, LICENSE, conf
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # https://cli.github.com/manual/gh_release_create
+          release_options: --draft --generate-notes
+        env:
+          debug: 1

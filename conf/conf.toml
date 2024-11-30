@@ -1,3 +1,6 @@
-[web]
-listen="127.0.0.1:8080"
-dir="uploads"
+# Fake-CDN Configuration
+# Upload directory for files
+dir = ".uploads"
+
+# Authorization token for uploads
+token = "RCk2FW4f2ajDAR$aEZoWfCdq+g!5INX1"

@@ -92,7 +92,7 @@ def test_upload_html_override():
     pass
 
 
-def test_upload_tar():
+def test_upload_tgz():
     F = File.create
     id = str(uuid.uuid4())
     url_paths = [
