@@ -17,17 +17,13 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Create Release
-        uses: actions/create-release@latest
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: false
-          prerelease: false
+          draft: true 
+          prerelease: true
 
   publish:
     name: publish ${{ matrix.name }}
@@ -45,15 +41,14 @@ jobs:
             suffix: linux-x86_64
             archive: tar.xz
             name: x86_64-unknown-linux-gnu
-          - target: x86_64-apple-darwin
-            suffix: darwin-x86_64
-            archive: tar.gz
-            name: x86_64-apple-darwin
+    #       - target: x86_64-apple-darwin
+    #         suffix: darwin-x86_64
+    #         archive: tar.gz
+    #         name: x86_64-apple-darwin
     runs-on: ubuntu-latest
     steps:
-      - name: Clone test repository
-        uses: actions/checkout@v2
-      - uses: xhaiker/rust-release.action@v1.0.0
+      - uses: actions/checkout@v4
+      - uses: xhaiker/rust-release.action@v1.0.4
         name: build ${{ matrix.name }}
         with:
           release: ${{ github.ref_name }}
