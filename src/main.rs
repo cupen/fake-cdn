@@ -1,5 +1,5 @@
 use colog;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::io::Read;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -9,56 +9,50 @@ mod cli;
 use cli::Command;
 
 mod files;
+mod utils;
 
-// use lazy_static::lazy_static;
 use actix_web::{
     get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-// use actix_web::http::header::{HeaderMap, HeaderValue};
 use actix_files::Files;
 use tokio::fs;
-// use tokio::fs::File;
-// use mime_guess::from_path;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
-// use actix_multipart::Multipart;
-// use serde::Deserialize;
 use std::fmt::Debug;
 use serde_json::json;
 
 const UPLOAD_DIR: &str = ".uploads";
-// const listen: &str = "127.0.0.1:9527";
 
 #[derive(Debug, MultipartForm)]
 struct UploadForm {
-    #[multipart(limit = "512MB")]
+    #[multipart(limit = "1024MB")]
     file: TempFile,
 }
 
 #[post("/{path:.*}")]
 async fn upload(
-    args: web::Path<(String,)>,
+    args: web::Path<String>,
     req: HttpRequest,
     MultipartForm(mut form): MultipartForm<UploadForm>,
 ) -> impl Responder {
-    let fpath = args.into_inner().0;
-    if fpath.contains("..") {
+    let fpath = args.into_inner();
+
+    if !utils::is_safe_url(&fpath) {
+        error!("[upload] bad path: {fpath}");
         return HttpResponse::BadRequest().body("Bad path");
     }
+
     debug!("[upload] {:?}", form);
     let token = req.headers().get("Authorization");
     match token {
         Some(t) => {
-            info!("[upload] token: ...");
             let token = cli::get_args_token();
-            if token.eq(t.to_str().unwrap()) {
-                info!("[upload] token: ok");
-            } else {
-                info!("[upload] token: invalid");
+            if !token.eq(t.to_str().unwrap()) {
+                warn!("[upload] token: invalid");
                 return HttpResponse::Unauthorized().body("Unauthorized");
             }
         }
         None => {
-            info!("[upload] no token");
+            warn!("[upload] no token");
             return HttpResponse::Unauthorized().body("Unauthorized");
         }
     }
@@ -78,12 +72,11 @@ async fn upload(
     let fp = form.file.file.as_file_mut();
     match fp.read_to_end(buf) {
         Ok(s) => {
-            info!("[upload]  => saved: {} {} bytes", full_path.display(), s);
             fs::write(full_path.clone(), buf)
                 .await
-                .expect("Unable to write file");
+                .expect("[upload] write file failed");
 
-
+            info!("[upload]   => saved. {} size: {}", full_path.display(), s);
             let fname = form.file.file_name.unwrap();
             if fname.contains(".") {
                 fname.split(".").last().unwrap();
@@ -96,18 +89,18 @@ async fn upload(
                 }
                 match ext {
                     "tar.gz" => {
-                        info!("[upload] {} is tar.gz",  full_path.display());
+                        debug!("[upload] {} is tar.gz",  full_path.display());
                         let full_dir = full_path.parent().unwrap();
                         files::uncompress_tgz(&full_path, full_dir).expect("Unable to uncompress");
                     }
                     "zip" => {
-                        info!("[upload] {} is zip", fpath);
+                        debug!("[upload] {fpath} is zip");
                     }
                     "html" => {
-                        info!("[upload] {} is html", fpath);
+                        debug!("[upload] {fpath} is html");
                     }
                     _ => {
-                        info!("[upload] {} is {}", fpath, ext);
+                        debug!("[upload] {fpath} is {ext}");
                     }
                 }
             }
@@ -118,7 +111,7 @@ async fn upload(
             return HttpResponse::BadRequest().body("Bad file");
         }
     }
-    return HttpResponse::Ok().body("");
+    return HttpResponse::Ok().body("ok");
 }
 
 #[get("/status")]

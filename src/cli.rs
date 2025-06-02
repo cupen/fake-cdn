@@ -22,7 +22,7 @@ pub enum Command {
         #[structopt(long, env="FAKECDN_DIR", default_value=".uploads")]
         dir: String,
 
-        #[structopt(long, env="FAKECDN_TOKEN", default_value="")]
+        #[structopt(long, env="FAKECDN_TOKEN", default_value="", required=true)]
         token: String,
     },
 }

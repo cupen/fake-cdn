@@ -18,14 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/create-release@latest
+      # - uses: actions/create-release@latest
+      - uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: false
-          prerelease: false
+          draft: true 
+          prerelease: true
 
   publish:
     name: publish ${{ matrix.name }}
@@ -50,6 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: xhaiker/rust-release.action@v1.0.4
         name: build ${{ matrix.name }}
         with:
